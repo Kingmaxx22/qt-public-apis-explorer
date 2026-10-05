@@ -177,6 +177,15 @@ startup, so the interface matches `design/design.md` on any machine instead of
 silently falling back to Segoe UI / Consolas. Both are SIL OFL; the licenses are
 included as `OFL-Inter.txt` and `OFL-JetBrainsMono.txt`.
 
+### Contributors
+
+Thanks to everyone who has helped shape this explorer.
+
+- [@Kingmaxx22](https://github.com/Kingmaxx22) — author and maintainer
+- [@codebuff](https://github.com/codebuff) — co-author of the implementation
+
+Contributions of any kind are welcome: open an issue or a pull request.
+
 ## Design
 
 The interface follows `design/design.md`: edge-to-edge docking, 1px hairline
