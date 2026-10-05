@@ -1,6 +1,7 @@
 # Build artifacts
 dist/
 build/
+release/
 *.spec.bak
 __pycache__/
 *.py[cod]
