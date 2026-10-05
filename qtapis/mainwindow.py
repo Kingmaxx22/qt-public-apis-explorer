@@ -110,6 +110,7 @@ class MainWindow(QMainWindow):
         self._resize_edge: str | None = None
         self._resize_origin: tuple[int, int, int, int] | None = None
         self._resize_global: QPoint | None = None
+        self._hover_edge: str | None = None
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
@@ -215,14 +216,24 @@ class MainWindow(QMainWindow):
                     self._resize_global = pos
                     return True
                 return False
-            # Hover feedback only for this window.
+            # Hover feedback only for this window. setOverrideCursor pushes onto
+            # an override stack, so it must be balanced by a restore before
+            # changing edge - otherwise the stack grows on every mouse move.
             if watched is self or (watched is not None
                                    and self.isAncestorOf(watched)):
-                edge = self._edge_at(pos)
-                QApplication.setOverrideCursor(self._CURSORS[edge]) if edge \
-                    else QApplication.restoreOverrideCursor()
+                self._set_hover_cursor(self._edge_at(pos))
             return False
         return False
+
+    def _set_hover_cursor(self, edge: str | None) -> None:
+        """Set the resize cursor for `edge`, balancing the override stack."""
+        if edge == self._hover_edge:
+            return
+        if self._hover_edge is not None:
+            QApplication.restoreOverrideCursor()
+        self._hover_edge = edge
+        if edge is not None:
+            QApplication.setOverrideCursor(self._CURSORS[edge])
 
     def _apply_resize(self, pos: QPoint) -> None:
         if self._resize_origin is None or self._resize_global is None:
@@ -259,7 +270,9 @@ class MainWindow(QMainWindow):
         self._resize_edge = None
         self._resize_origin = None
         self._resize_global = None
-        QApplication.restoreOverrideCursor()
+        if self._hover_edge is not None:
+            QApplication.restoreOverrideCursor()
+            self._hover_edge = None
 
     # ------------------------------------------------------------------ UI
 
@@ -987,6 +1000,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._end_resize()
+        self.title_bar.set_maximized(False)
         app = QApplication.instance()
         if app is not None:
             app.removeEventFilter(self)

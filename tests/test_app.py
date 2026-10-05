@@ -20,7 +20,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import csv  # noqa: E402
 import time  # noqa: E402
 
-from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtCore import QPoint, Qt  # noqa: E402
 from PySide6.QtGui import QFontDatabase  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
@@ -67,6 +67,14 @@ def check(label: str, condition: bool, detail: str = "") -> None:
 
 
 def main() -> int:
+    # The console may be cp1252; the suite prints glyphs like the restore
+    # symbol, so don't let encoding kill the run.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     fonts_mod.register_bundled_fonts()
@@ -583,6 +591,89 @@ def main() -> int:
     check("stubbed URL matches the record",
           opened_urls and win._selected_record().url in opened_urls[-1],
           opened_urls[-1] if opened_urls else "none")
+
+    # -- frameless window chrome ----------------------------------------------
+    check("window is frameless so only the themed bar is drawn",
+          bool(win.windowFlags() & Qt.FramelessWindowHint))
+
+    # Qt keeps WindowTitleHint in the bitmask even when frameless (it is just
+    # ignored), so assert on the observable outcome instead: no native frame
+    # is reserved, so frame and client geometry coincide.
+    check("no native frame is reserved",
+          win.frameGeometry() == win.geometry(),
+          f"frame={win.frameGeometry().getRect()} client={win.geometry().getRect()}")
+
+    # The themed bar really is the topmost chrome.
+    check("themed title bar sits at the top of the window",
+          win.title_bar.geometry().top() == 0
+          and win.title_bar.height() == theme.TITLEBAR_H,
+          f"top={win.title_bar.geometry().top()} h={win.title_bar.height()}")
+
+    # Title bar buttons must drive real window state, not be decorative.
+    win.title_bar._winMax.click()
+    app.processEvents()
+    check("maximize button maximizes", win.isMaximized())
+    check("maximize glyph reflects state",
+          win.title_bar._winMax.text() == "❐",
+          win.title_bar._winMax.text())
+    win.title_bar._winMax.click()
+    app.processEvents()
+    check("maximize button restores", not win.isMaximized())
+    check("maximize glyph resets",
+          win.title_bar._winMax.text() == "□",
+          win.title_bar._winMax.text())
+
+    win.toggle_maximized()
+    app.processEvents()
+    check("double-click / toggle path maximizes", win.isMaximized())
+    win.toggle_maximized()
+    app.processEvents()
+    check("toggle path restores", not win.isMaximized())
+
+    # Edge hit-testing drives the frameless resize grip.
+    frame = win.frameGeometry()
+    centre = frame.center()
+    check("no edge detected away from the border",
+          win._edge_at(centre) is None, str(win._edge_at(centre)))
+    check("left edge detected",
+          win._edge_at(QPoint(frame.left() + 2, centre.y())) == "left")
+    check("right edge detected",
+          win._edge_at(QPoint(frame.right() - 2, centre.y())) == "right")
+    check("top edge detected",
+          win._edge_at(QPoint(centre.x(), frame.top() + 2)) == "top")
+    check("bottom edge detected",
+          win._edge_at(QPoint(centre.x(), frame.bottom() - 2)) == "bottom")
+    check("top-left corner detected",
+          win._edge_at(QPoint(frame.left() + 1, frame.top() + 1))
+          == "top-left")
+    check("bottom-right corner detected",
+          win._edge_at(QPoint(frame.right() - 1, frame.bottom() - 1))
+          == "bottom-right")
+    check("just outside the border is not an edge",
+          win._edge_at(QPoint(frame.left() - 20, centre.y())) is None)
+
+    # Resizing must respect the minimum size.
+    win.resize(1200, 800)
+    app.processEvents()
+    win._resize_edge = "right"
+    win._resize_origin = (win.geometry().x(), win.geometry().y(),
+                          win.width(), win.height())
+    win._resize_global = win.mapToGlobal(QPoint(win.width(), win.height() // 2))
+    win._apply_resize(win._resize_global + QPoint(-900, 0))
+    app.processEvents()
+    check("resize clamps to the minimum width",
+          win.width() == win.minimumWidth(),
+          f"{win.width()} vs min {win.minimumWidth()}")
+    win._end_resize()
+
+    # The override-cursor stack must stay balanced across edge changes.
+    win._set_hover_cursor("left")
+    win._set_hover_cursor("top")
+    win._set_hover_cursor(None)
+    app.processEvents()
+    check("hover cursor changes leave no override behind",
+          QApplication.overrideCursor() is None,
+          str(QApplication.overrideCursor()))
 
     # -- bundled fonts ---------------------------------------------------------
     check("bundled fonts registered",
