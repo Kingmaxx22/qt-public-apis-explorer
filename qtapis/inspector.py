@@ -187,6 +187,8 @@ class Inspector(QWidget):
     def _build_curl_well(self, record: ApiRecord) -> QWidget:
         well = QWidget()
         well.setObjectName("curlWell")
+        well.setMinimumWidth(0)
+        well.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Minimum)
 
         outer = QVBoxLayout(well)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -199,6 +201,7 @@ class Inspector(QWidget):
         ep_tag = QLabel("ENDPOINT")
         ep_tag.setObjectName("fieldKey")
         ep_bar.addWidget(ep_tag)
+        ep_tag.setMaximumWidth(56)
 
         self.endpoint_edit = QLineEdit(record.url or "")
         self.endpoint_edit.setObjectName("endpointInput")
@@ -206,9 +209,10 @@ class Inspector(QWidget):
             "Paste the live endpoint path…"
         )
         self.endpoint_edit.setClearButtonEnabled(True)
-        self.endpoint_edit.setFont(
-            QFont(theme.mono_family(), 8)
-        )
+        self.endpoint_edit.setFont(QFont(theme.mono_family(), 8))
+        self.endpoint_edit.setMinimumWidth(60)
+        self.endpoint_edit.setSizePolicy(QSizePolicy.Ignored,
+                                        QSizePolicy.Fixed)
         self.endpoint_edit.textChanged.connect(self._regenerate_curl)
         ep_bar.addWidget(self.endpoint_edit, 1)
 
@@ -225,6 +229,9 @@ class Inspector(QWidget):
         )
         self.endpoint_note.setObjectName("fieldKey")
         self.endpoint_note.setWordWrap(True)
+        self.endpoint_note.setMinimumWidth(0)
+        self.endpoint_note.setSizePolicy(QSizePolicy.Ignored,
+                                         QSizePolicy.Minimum)
         self.endpoint_note.setContentsMargins(8, 2, 8, 0)
         outer.addWidget(self.endpoint_note)
 
@@ -237,6 +244,8 @@ class Inspector(QWidget):
         bar.addWidget(tag)
         self.auth_hint = QLabel(auth_hint(record))
         self.auth_hint.setObjectName("fieldKey")
+        self.auth_hint.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.auth_hint.setMinimumWidth(0)
         bar.addWidget(self.auth_hint, 1)
         copy_btn = QPushButton("Copy cURL")
         copy_btn.setObjectName("miniButton")
@@ -247,6 +256,9 @@ class Inspector(QWidget):
 
         self.curl_edit = QPlainTextEdit(self._curl_text())
         self.curl_edit.setObjectName("curlText")
+        self.curl_edit.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.curl_edit.setMinimumWidth(0)
+        self.curl_edit.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         self.curl_edit.setReadOnly(True)
         self.curl_edit.setFrameShape(QPlainTextEdit.NoFrame)
         self.curl_edit.setFixedHeight(76)

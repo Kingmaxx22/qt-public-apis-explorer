@@ -60,7 +60,7 @@ def build_curl(record: ApiRecord, endpoint: str | None = None) -> str:
 def auth_hint(record: ApiRecord) -> str:
     """A short note describing what the generated command will contain."""
     if auth_scheme(record):
-        return f"Includes a {record.auth} header placeholder."
+        return f"{record.auth} header"
     if record.auth not in ("none", "unknown", ""):
-        return f"Registry declares '{record.auth}' auth; no header template known."
-    return "No authentication required."
+        return "custom auth"
+    return "no auth"

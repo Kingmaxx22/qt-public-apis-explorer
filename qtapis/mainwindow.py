@@ -6,7 +6,7 @@ import csv
 import json
 from datetime import datetime, timezone
 
-from PySide6.QtCore import Qt, QTimer, QUrl, qVersion
+from PySide6.QtCore import QPoint, Qt, QTimer, QUrl, qVersion
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -69,6 +69,9 @@ APP_VERSION = "2.4"
 # the card view renders a bounded first page and says so.
 CARD_PAGE_SIZE = 240
 
+# Pointer distance from a window edge that starts a resize drag.
+RESIZE_MARGIN = 6
+
 
 def _friendly_age(stamp: str) -> str:
     """Render an ISO timestamp as a short 'synced N ago' string."""
@@ -96,8 +99,20 @@ class MainWindow(QMainWindow):
     def __init__(self, catalog: Catalog, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Qt Public APIs Explorer")
+        # Frameless: the themed TitleBar is the only chrome. Leaving the native
+        # frame on would stack two title bars.
+        self.setWindowFlag(Qt.FramelessWindowHint, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, False)
         self.resize(1440, 880)
         self.setMinimumSize(960, 600)
+
+        # Frameless windows lose the native resize grip, so track the edges.
+        self._resize_edge: str | None = None
+        self._resize_origin: tuple[int, int, int, int] | None = None
+        self._resize_global: QPoint | None = None
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
         self.catalog = catalog
         self.store = RecordStore(catalog.records, catalog.fetched_at, self)
@@ -116,6 +131,136 @@ class MainWindow(QMainWindow):
         self._apply_catalog(catalog)
         QTimer.singleShot(0, self.table_view.setFocus)
 
+    # ------------------------------------------------------- window control
+
+    def toggle_maximized(self) -> None:
+        """Maximize / restore, keeping the glyph in sync."""
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+        self.title_bar.set_maximized(self.isMaximized())
+
+    def changeEvent(self, event):
+        # The WM can maximize independently (double-click, snap, tiling WM).
+        if event.type() == event.Type.WindowStateChange:
+            self.title_bar.set_maximized(self.isMaximized())
+        super().changeEvent(event)
+
+    def _edge_at(self, pos: QPoint) -> str | None:
+        """Which resize edge (if any) the global point sits on."""
+        if self.isMaximized():
+            return None
+        frame = self.frameGeometry()
+        margin = RESIZE_MARGIN
+        left = pos.x() - frame.left()
+        top = pos.y() - frame.top()
+        right = frame.right() - pos.x()
+        bottom = frame.bottom() - pos.y()
+
+        on_left = 0 <= left <= margin
+        on_right = 0 <= right <= margin
+        on_top = 0 <= top <= margin
+        on_bottom = 0 <= bottom <= margin
+        if not (on_left or on_right or on_top or on_bottom):
+            return None
+        if on_top and on_left:
+            return "top-left"
+        if on_top and on_right:
+            return "top-right"
+        if on_bottom and on_left:
+            return "bottom-left"
+        if on_bottom and on_right:
+            return "bottom-right"
+        if on_left:
+            return "left"
+        if on_right:
+            return "right"
+        if on_top:
+            return "top"
+        return "bottom"
+
+    _CURSORS = {
+        "left": Qt.SizeHorCursor,
+        "right": Qt.SizeHorCursor,
+        "top": Qt.SizeVerCursor,
+        "bottom": Qt.SizeVerCursor,
+        "top-left": Qt.SizeFDiagCursor,
+        "bottom-right": Qt.SizeFDiagCursor,
+        "top-right": Qt.SizeBDiagCursor,
+        "bottom-left": Qt.SizeBDiagCursor,
+    }
+
+    def eventFilter(self, watched, event):
+        if self._resize_edge is not None and event.type() in (
+            event.Type.MouseMove,
+            event.Type.MouseButtonRelease,
+        ):
+            if event.type() == event.Type.MouseButtonRelease:
+                self._end_resize()
+                return False
+            self._apply_resize(event.globalPosition().toPoint())
+            return True
+
+        if event.type() in (event.Type.MouseMove, event.Type.MouseButtonPress):
+            pos = event.globalPosition().toPoint()
+            if event.type() == event.Type.MouseButtonPress:
+                edge = self._edge_at(pos)
+                if edge:
+                    self._resize_edge = edge
+                    self._resize_origin = (
+                        self.geometry().x(), self.geometry().y(),
+                        self.width(), self.height(),
+                    )
+                    self._resize_global = pos
+                    return True
+                return False
+            # Hover feedback only for this window.
+            if watched is self or (watched is not None
+                                   and self.isAncestorOf(watched)):
+                edge = self._edge_at(pos)
+                QApplication.setOverrideCursor(self._CURSORS[edge]) if edge \
+                    else QApplication.restoreOverrideCursor()
+            return False
+        return False
+
+    def _apply_resize(self, pos: QPoint) -> None:
+        if self._resize_origin is None or self._resize_global is None:
+            return
+        x, y, w, h = self._resize_origin
+        dx = pos.x() - self._resize_global.x()
+        dy = pos.y() - self._resize_global.y()
+        edge = self._resize_edge or ""
+
+        if "left" in edge:
+            x += dx
+            w -= dx
+        elif "right" in edge:
+            w += dx
+        if "top" in edge:
+            y += dy
+            h -= dy
+        elif "bottom" in edge:
+            h += dy
+
+        # Clamp to the minimum size by absorbing the overflow on the far edge.
+        if w < self.minimumWidth():
+            if "left" in edge:
+                x -= self.minimumWidth() - w
+            w = self.minimumWidth()
+        if h < self.minimumHeight():
+            if "top" in edge:
+                y -= self.minimumHeight() - h
+            h = self.minimumHeight()
+
+        self.setGeometry(x, y, w, h)
+
+    def _end_resize(self) -> None:
+        self._resize_edge = None
+        self._resize_origin = None
+        self._resize_global = None
+        QApplication.restoreOverrideCursor()
+
     # ------------------------------------------------------------------ UI
 
     def _build_ui(self) -> None:
@@ -126,6 +271,9 @@ class MainWindow(QMainWindow):
         root.setSpacing(0)
 
         self.title_bar = TitleBar()
+        self.title_bar.minimizeRequested.connect(self.showMinimized)
+        self.title_bar.maximizeRequested.connect(self.toggle_maximized)
+        self.title_bar.closeRequested.connect(self.close)
         root.addWidget(self.title_bar)
 
         root.addWidget(self._build_menubar())
@@ -838,6 +986,10 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._end_resize()
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
         # Never leave a QThread running at teardown.
         self.sync.shutdown()
         # Persist favorites so they survive a restart.

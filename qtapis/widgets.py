@@ -30,6 +30,7 @@ class Logo(QWidget):
         super().__init__(parent)
         self._size = size
         self.setFixedSize(size, size)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
 
     def paintEvent(self, event):
         from PySide6.QtCore import QPointF, QRectF
@@ -72,6 +73,10 @@ class TitleBar(QWidget):
         self.setObjectName("titleBar")
         self.setFixedHeight(theme.TITLEBAR_H)
 
+        # Frameless windows have no native drag handle, so the bar drags itself.
+        self._drag_offset = None
+        self._dragging = False
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 0, 0, 0)
         layout.setSpacing(6)
@@ -106,9 +111,47 @@ class TitleBar(QWidget):
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(slot)
             layout.addWidget(btn)
+            setattr(self, f"_{obj}", btn)
+
+        # Labels would otherwise swallow the drag that the bar handles.
+        for widget in (self.title, self.version, self.avatar):
+            widget.setAttribute(Qt.WA_TransparentForMouseEvents, True)
 
     def set_version(self, text: str) -> None:
         self.version.setText(text)
+
+    def set_maximized(self, maximized: bool) -> None:
+        self._winMax.setText("❐" if maximized else "□")
+        self._winMax.setToolTip("Restore" if maximized else "Maximize")
+
+    # -- window dragging ---------------------------------------------------
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            win = self.window()
+            self._drag_offset = (
+                event.globalPosition().toPoint()
+                - win.frameGeometry().topLeft()
+            )
+            self._dragging = True
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging and event.buttons() & Qt.LeftButton:
+            win = self.window()
+            if not win.isMaximized():
+                win.move(event.globalPosition().toPoint() - self._drag_offset)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._dragging = False
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.maximizeRequested.emit()
+        super().mouseDoubleClickEvent(event)
 
 
 class SearchWell(QWidget):
