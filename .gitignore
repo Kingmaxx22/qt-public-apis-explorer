@@ -1,0 +1,28 @@
+# Build artifacts
+dist/
+build/
+*.spec.bak
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Generated at runtime (catalog cache + favorites in a frozen build)
+data/catalog.local.json
+
+# Tooling / agent config (not part of the app)
+.agents/
+.claude/
+skills-lock.json
+
+# Design source material - see qtapis/theme.py for the encoded tokens
+design/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Windows reserved device name; git cannot represent it
+nul
