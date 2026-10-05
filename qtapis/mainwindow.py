@@ -63,7 +63,7 @@ from .widgets import (
     dot_label,
 )
 
-APP_VERSION = "2.4.1"
+APP_VERSION = "2.4.2"
 
 # Pointer distance from a window edge that starts a resize drag.
 RESIZE_MARGIN = 6
@@ -1000,7 +1000,9 @@ class MainWindow(QMainWindow):
             "registry.<br><br>"
             f"{len(self.store.records):,} APIs across "
             f"{len(self.store.category_counts())} categories.<br>"
-            "Built with PySide6 (Qt 6).",
+            "Built with PySide6 (Qt 6).<br><br>"
+            "Licensed under the BSD 2-Clause License. Inter and JetBrains "
+            "Mono are bundled under the SIL Open Font License.",
         )
 
     def closeEvent(self, event: QCloseEvent) -> None:

@@ -186,6 +186,14 @@ Thanks to everyone who has helped shape this explorer.
 
 Contributions of any kind are welcome: open an issue or a pull request.
 
+## License
+
+BSD 2-Clause. See [LICENSE](LICENSE).
+
+The bundled Inter and JetBrains Mono fonts are licensed separately under the
+SIL Open Font License; see `assets/fonts/OFL-Inter.txt` and
+`assets/fonts/OFL-JetBrainsMono.txt`.
+
 ## Design
 
 The interface follows `design/design.md`: edge-to-edge docking, 1px hairline

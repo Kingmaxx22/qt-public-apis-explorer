@@ -38,10 +38,13 @@ EXCLUDED_QT = [
 ROOT = os.path.abspath(os.getcwd())
 FONTS = os.path.join(ROOT, "assets", "fonts")
 ICON = os.path.join(ROOT, "assets", "app.ico")
+LICENSE = os.path.join(ROOT, "LICENSE")
 
 datas = [
     (os.path.join(ROOT, "data", "catalog.json"), "data"),
 ]
+if os.path.isfile(LICENSE):
+    datas.append((LICENSE, "."))
 if os.path.isdir(FONTS):
     for name in os.listdir(FONTS):
         datas.append((os.path.join(FONTS, name), os.path.join("assets", "fonts")))
