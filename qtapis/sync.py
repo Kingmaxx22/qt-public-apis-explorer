@@ -89,15 +89,21 @@ class SyncController(QObject):
         return True
 
     def _teardown(self) -> None:
-        thread = self._thread
+        thread, worker = self._thread, self._worker
         self._thread = None
-        # Drop the Python reference so shiboken frees the worker once nothing
-        # else holds it. Calling deleteLater() on it as well would race the
-        # deferred delete and raise "Internal C++ object already deleted".
         self._worker = None
         if thread is not None:
+            if worker is not None:
+                # Post the worker's deletion to its OWN event loop while that
+                # loop is still alive, then quit()+wait() so it is drained on
+                # the way out. Destroying the worker from the GUI thread after
+                # the QThread is gone leaves it with affinity to a dead thread
+                # and crashes PySide.
+                worker.deleteLater()
             thread.quit()
-            thread.wait(3000)
+            if not thread.wait(5000):
+                # Still running: leak it rather than deleting a live thread.
+                return
             thread.deleteLater()
         self.busyChanged.emit(False)
 

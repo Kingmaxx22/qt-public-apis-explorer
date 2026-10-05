@@ -214,6 +214,7 @@ class _CardGrid(QScrollArea):
         self._records: list[ApiRecord] = []
         self._cards: list[ApiCard] = []
         self._rebuild_queued = False
+        self._built_width = -1
 
         self._host = QWidget()
         self._grid = QGridLayout(self._host)
@@ -223,6 +224,9 @@ class _CardGrid(QScrollArea):
 
     def set_records(self, records: list[ApiRecord]) -> None:
         self._records = list(records)
+        # A new record set must always rebuild, even at the same width; only a
+        # pure resize should be able to skip work.
+        self._built_width = -1
         self._rebuild()
 
     def _clear(self) -> None:
@@ -238,13 +242,19 @@ class _CardGrid(QScrollArea):
         self._cards.clear()
 
     def _rebuild(self) -> None:
-        self._clear()
         if not self._records:
+            self._clear()
+            self._built_width = -1
             return
-        per_row = max(1, (self.viewport().width() - CARD_GAP) //
-                      (MIN_CARD_W + CARD_GAP))
-        card_w = max(MIN_CARD_W, (self.viewport().width()
-                                  - CARD_GAP * (per_row + 1)) // per_row)
+        width = self.viewport().width()
+        # Switching to card view triggers set_records and then a resize, so
+        # without this the whole page would be built twice and thrown away.
+        if width == self._built_width:
+            return
+        self._built_width = width
+        self._clear()
+        per_row = max(1, (width - CARD_GAP) // (MIN_CARD_W + CARD_GAP))
+        card_w = max(MIN_CARD_W, (width - CARD_GAP * (per_row + 1)) // per_row)
         for i, record in enumerate(self._records):
             card = ApiCard(record)
             card.setFixedWidth(card_w)
