@@ -63,11 +63,7 @@ from .widgets import (
     dot_label,
 )
 
-APP_VERSION = "2.4"
-
-# Building one widget per record would be wasteful for a 2,000-row catalog, so
-# the card view renders a bounded first page and says so.
-CARD_PAGE_SIZE = 240
+APP_VERSION = "2.4.1"
 
 # Pointer distance from a window edge that starts a resize drag.
 RESIZE_MARGIN = 6
@@ -482,6 +478,7 @@ class MainWindow(QMainWindow):
 
         self.card_view = CardView()
         self.card_view.cardActivated.connect(self._on_card_activated)
+        self.card_view.pageChanged.connect(self._on_card_page_changed)
         self.card_view.setVisible(False)
         layout.addWidget(self.card_view, 1)
         return pane
@@ -840,12 +837,20 @@ class MainWindow(QMainWindow):
         if self._view_mode != "cards":
             return
         records = self._visible_records()
-        self.card_view.set_records(records[:CARD_PAGE_SIZE])
+        self.card_view.set_records(records)
+        pages = self.card_view.page_count()
         self.card_caption.setText(
-            f"{min(len(records), CARD_PAGE_SIZE):,} of {len(records):,} shown"
-            if len(records) > CARD_PAGE_SIZE else f"{len(records):,} cards"
+            f"{pages:,} page{'s' if pages != 1 else ''}  ·  {len(records):,} cards"
         )
         self.card_caption.setVisible(True)
+
+    def _on_card_page_changed(self, page: int) -> None:
+        """Keep the subheader caption in step with the pager."""
+        if self._view_mode != "cards":
+            return
+        self.card_caption.setText(
+            f"Page {page:,} of {self.card_view.page_count():,}"
+        )
 
     def _on_card_activated(self, record: ApiRecord) -> None:
         self.inspector.set_record(record)

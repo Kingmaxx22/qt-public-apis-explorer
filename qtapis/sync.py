@@ -89,15 +89,16 @@ class SyncController(QObject):
         return True
 
     def _teardown(self) -> None:
-        thread, worker = self._thread, self._worker
+        thread = self._thread
         self._thread = None
+        # Drop the Python reference so shiboken frees the worker once nothing
+        # else holds it. Calling deleteLater() on it as well would race the
+        # deferred delete and raise "Internal C++ object already deleted".
         self._worker = None
         if thread is not None:
             thread.quit()
-            thread.wait(5000)
+            thread.wait(3000)
             thread.deleteLater()
-        if worker is not None:
-            worker.deleteLater()
         self.busyChanged.emit(False)
 
     def _on_finished(self, catalog: Catalog) -> None:
@@ -109,9 +110,14 @@ class SyncController(QObject):
         self.failed.emit(message)
 
     def shutdown(self) -> None:
-        """Stop cleanly on window close so Qt never reports a live thread."""
-        if self._thread is not None and self._thread.isRunning():
-            self._thread.quit()
-            self._thread.wait(3000)
+        """Stop cleanly on window close so Qt never reports a live thread.
+
+        A blocking wait is acceptable here because the window is closing and
+        nothing else needs the GUI thread.
+        """
+        thread = self._thread
         self._thread = None
         self._worker = None
+        if thread is not None and thread.isRunning():
+            thread.quit()
+            thread.wait(3000)

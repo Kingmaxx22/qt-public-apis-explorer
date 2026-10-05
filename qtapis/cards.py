@@ -16,8 +16,13 @@ from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -32,6 +37,8 @@ CARD_GAP = theme.space_px("space-lg")       # 12px
 CARD_RADIUS = theme.RAD_INPUT              # 4px
 MIN_CARD_W = 300
 CARD_H = 126
+# Cards materialised per page; keeps a 2,000-row catalog cheap.
+PAGE_SIZE = 240
 
 
 class ApiCard(QWidget):
@@ -194,11 +201,10 @@ class ApiCard(QWidget):
             self.activated.emit(self.record)
 
 
-class CardView(QScrollArea):
-    """Flowing grid of ApiCards, sized to the viewport width."""
+class _CardGrid(QScrollArea):
+    """The scrolling card canvas. Renders exactly the slice it is given."""
 
     cardActivated = Signal(object)
-    favoriteToggled = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -245,6 +251,7 @@ class CardView(QScrollArea):
             card.activated.connect(self.cardActivated)
             self._grid.addWidget(card, i // per_row, i % per_row)
             self._cards.append(card)
+        self.verticalScrollBar().setValue(0)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -267,3 +274,161 @@ class CardView(QScrollArea):
         if 0 <= i < len(self._cards):
             return self._cards[i]
         return None
+
+
+class CardView(QWidget):
+    """Paged card grid: a canvas plus a numbered pager.
+
+    Holds the whole filtered result set and materialises one page at a time so
+    a 2,000-row catalog never builds 2,000 widgets.
+    """
+
+    cardActivated = Signal(object)
+    pageChanged = Signal(int)   # 1-based page number
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._all: list[ApiRecord] = []
+        self._page = 1
+        self._pages = 1
+        self._page_buttons: list[QPushButton] = []
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.grid = _CardGrid()
+        self.grid.cardActivated.connect(self.cardActivated)
+        outer.addWidget(self.grid, 1)
+
+        self.pager = QWidget()
+        self.pager.setObjectName("pager")
+        self.pager.setFixedHeight(30)
+        pager_layout = QHBoxLayout(self.pager)
+        pager_layout.setContentsMargins(10, 0, 10, 0)
+        pager_layout.setSpacing(4)
+        pager_layout.addStretch(1)
+        outer.addWidget(self.pager)
+
+        self._build_pager()
+        self.set_records([])
+
+    # -- paging ------------------------------------------------------------
+
+    def _build_pager(self) -> None:
+        """Create the arrow + number buttons once; labels update in place."""
+        self.prev_btn = QToolButton()
+        self.prev_btn.setObjectName("pageArrow")
+        self.prev_btn.setText("‹")
+        self.prev_btn.setToolTip("Previous page")
+        self.prev_btn.setCursor(Qt.PointingHandCursor)
+        self.prev_btn.clicked.connect(lambda: self.goto_page(self._page - 1))
+
+        self.pages_label = QLabel("")
+        self.pages_label.setObjectName("pageLabel")
+
+        self.next_btn = QToolButton()
+        self.next_btn.setObjectName("pageArrow")
+        self.next_btn.setText("›")
+        self.next_btn.setToolTip("Next page")
+        self.next_btn.setCursor(Qt.PointingHandCursor)
+        self.next_btn.clicked.connect(lambda: self.goto_page(self._page + 1))
+
+        self.pager.layout().addWidget(self.prev_btn)
+        self.pager.layout().addWidget(self.pages_label)
+        self.pager.layout().addWidget(self.next_btn)
+
+        # Numbered tabs are rebuilt only when the page count changes.
+        self.tabs_holder = QWidget()
+        tabs_holder_layout = QHBoxLayout(self.tabs_holder)
+        tabs_holder_layout.setContentsMargins(4, 0, 4, 0)
+        tabs_holder_layout.setSpacing(4)
+        self.pager.layout().insertWidget(1, self.tabs_holder)
+
+    def _sync_tabs(self) -> None:
+        # Remove through the layout only. Unparenting a button that a layout
+        # still references leaves a dangling entry, and they accumulate on
+        # every filter change until the layout is corrupt.
+        holder = self.tabs_holder.layout()
+        while holder.count():
+            item = holder.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        self._page_buttons.clear()
+
+        if self._pages <= 1:
+            self.tabs_holder.setVisible(False)
+            return
+        self.tabs_holder.setVisible(True)
+
+        holder = self.tabs_holder.layout()
+        # Cap the visible tab count so a huge result set stays one row.
+        max_tabs = 9
+        start = 1
+        if self._pages > max_tabs:
+            half = max_tabs // 2
+            start = max(1, min(self._page - half, self._pages - max_tabs + 1))
+        for number in range(start, min(self._pages, start + max_tabs) + 1):
+            btn = QPushButton(str(number))
+            btn.setObjectName("pageBtn")
+            btn.setFixedSize(28, 20)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setProperty("active", number == self._page)
+            btn.clicked.connect(
+                lambda _c, n=number: self.goto_page(n)
+            )
+            holder.addWidget(btn)
+            self._page_buttons.append(btn)
+
+    def goto_page(self, page: int) -> None:
+        """Jump to a 1-based page, clamped to the available range."""
+        target = max(1, min(int(page), self._pages))
+        if target == self._page and self._all:
+            return
+        self._page = target
+        self._render()
+
+    def set_records(self, records: list[ApiRecord]) -> None:
+        """Replace the result set and reset to the first page."""
+        self._all = list(records)
+        self._pages = max(1, -(-len(self._all) // PAGE_SIZE))
+        self._page = 1
+        self._sync_tabs()
+        self._render()
+
+    def _render(self) -> None:
+        start = (self._page - 1) * PAGE_SIZE
+        self.grid.set_records(self._all[start:start + PAGE_SIZE])
+
+        for btn in self._page_buttons:
+            btn.setProperty("active", btn.text() == str(self._page))
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+        self.prev_btn.setEnabled(self._page > 1)
+        self.next_btn.setEnabled(self._page < self._pages)
+        self.pages_label.setText(
+            f"Page {self._page} of {self._pages}  ·  "
+            f"{min(start + PAGE_SIZE, len(self._all)):,} of {len(self._all):,}"
+        )
+        self.pager.setVisible(self._pages > 1)
+        self.pageChanged.emit(self._page)
+
+    # -- passthrough --------------------------------------------------------
+
+    def card_count(self) -> int:
+        return self.grid.card_count()
+
+    def card_at(self, i: int) -> ApiCard | None:
+        return self.grid.card_at(i)
+
+    def page_count(self) -> int:
+        return self._pages
+
+    def current_page(self) -> int:
+        return self._page
+
+    def total_records(self) -> int:
+        return len(self._all)

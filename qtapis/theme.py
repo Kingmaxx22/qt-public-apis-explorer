@@ -644,6 +644,55 @@ QTableCornerButton::section {{
     background: transparent;
 }}
 
+/* ---------------- Card pager ---------------- */
+#pager {{
+    background: {CONTAINER_LOWEST};
+    border-top: 1px solid {OUTLINE_VARIANT};
+}}
+#pageArrow {{
+    background: {CONTAINER};
+    border: 1px solid {OUTLINE_VARIANT};
+    border-radius: {RAD_DEFAULT}px;
+    color: {ON_SURFACE_VARIANT};
+    font-size: 12pt;
+    padding: 0;
+}}
+#pageArrow:hover {{
+    background: {SURFACE_BRIGHT};
+    color: {ON_SURFACE};
+}}
+#pageArrow:disabled {{
+    color: {OUTLINE_VARIANT};
+    background: {CONTAINER_LOW};
+}}
+#pageBtn {{
+    background: {CONTAINER};
+    border: 1px solid {OUTLINE_VARIANT};
+    border-radius: {RAD_DEFAULT}px;
+    color: {ON_SURFACE_VARIANT};
+    font-family: "{mono_family()}";
+    font-size: 8pt;
+    font-weight: 600;
+    padding: 0;
+}}
+#pageBtn:hover {{
+    background: {SURFACE_BRIGHT};
+    color: {ON_SURFACE};
+}}
+#pageBtn[active="true"] {{
+    background: {PRIMARY_CONTAINER};
+    border-color: {PRIMARY_CONTAINER};
+    color: {ON_PRIMARY_CONTAINER};
+}}
+#pageLabel {{
+    color: {OUTLINE};
+    font-family: "{mono_family()}";
+    font-size: 8pt;
+    font-weight: 600;
+    background: transparent;
+    padding: 0 6px;
+}}
+
 /* ---------------- Status bar ---------------- */
 #statusBar {{
     background: {CONTAINER_LOWEST};

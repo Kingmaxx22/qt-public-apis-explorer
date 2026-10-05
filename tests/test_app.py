@@ -537,7 +537,7 @@ def main() -> int:
                   "X-Mashape-Key" in build_curl2(mashape), mashape.auth)
 
     # -- card view ------------------------------------------------------------
-    from qtapis.mainwindow import CARD_PAGE_SIZE
+    from qtapis.cards import PAGE_SIZE
 
     win.reset_filters()
     app.processEvents()
@@ -546,17 +546,84 @@ def main() -> int:
 
     win.set_view_mode("cards")
     app.processEvents()
-    check("card view shows cards", win.card_view.card_count() > 0,
-          f"{win.card_view.card_count()} cards")
+    cv = win.card_view
+    check("card view shows cards", cv.card_count() > 0,
+          f"{cv.card_count()} cards")
     check("card view hides the table", not win.table_view.isVisible())
-    check("card view caps the page", win.card_view.card_count()
-          == min(win.proxy.rowCount(), CARD_PAGE_SIZE))
-    check("card caption reports the cap",
-          "shown" in win.card_caption.text(), win.card_caption.text())
+    check("card view pages the full result set",
+          cv.total_records() == win.proxy.rowCount(),
+          f"{cv.total_records()} / {win.proxy.rowCount()}")
+    check("a full page renders up to the page size",
+          cv.card_count() == min(cv.total_records(), PAGE_SIZE),
+          f"{cv.card_count()} of {PAGE_SIZE}")
     check("Columns/Fit are disabled in card view",
           not win.columns_btn.isEnabled() and not win.fit_btn.isEnabled())
 
-    card0 = win.card_view.card_at(0)
+    # -- pager --------------------------------------------------------------
+    expected_pages = -(-cv.total_records() // PAGE_SIZE)
+    check("page count covers every record",
+          cv.page_count() == expected_pages,
+          f"{cv.page_count()} pages, expected {expected_pages}")
+    check("pager is visible for a multi-page result",
+          cv.pager.isVisible())
+    check("a numbered tab exists for each page",
+          len(cv._page_buttons) == expected_pages,
+          f"{len(cv._page_buttons)} tabs")
+
+    first_names = [cv.card_at(i).record.name for i in range(cv.card_count())]
+    cv.goto_page(2)
+    app.processEvents()
+    check("page 2 is selected", cv.current_page() == 2)
+    page2_names = [cv.card_at(i).record.name for i in range(cv.card_count())]
+    check("page 2 shows different records",
+          page2_names[0] != first_names[0],
+          f"{first_names[0]} -> {page2_names[0]}")
+    check("page 2 has a full page of cards",
+          len(page2_names) == PAGE_SIZE, str(len(page2_names)))
+
+    cv.goto_page(99)
+    app.processEvents()
+    check("page number clamps to the last page",
+          cv.current_page() == cv.page_count())
+    check("next arrow is disabled on the last page",
+          not cv.next_btn.isEnabled())
+    check("last page holds the remainder",
+          cv.card_count() == cv.total_records() - PAGE_SIZE * (expected_pages - 1),
+          f"{cv.card_count()} on last page")
+
+    cv.goto_page(0)
+    app.processEvents()
+    check("page number clamps to the first page", cv.current_page() == 1)
+    check("previous arrow is disabled on the first page",
+          not cv.prev_btn.isEnabled())
+
+    cv.next_btn.click()
+    app.processEvents()
+    check("next arrow advances", cv.current_page() == 2)
+    cv.prev_btn.click()
+    app.processEvents()
+    check("previous arrow goes back", cv.current_page() == 1)
+
+    cv._page_buttons[-1].click()
+    app.processEvents()
+    check("clicking a numbered tab jumps to that page",
+          cv.current_page() == expected_pages,
+          f"page {cv.current_page()}")
+    cv.goto_page(1)
+    app.processEvents()
+
+    # The subheader caption must track the pager.
+    seen = []
+    cv.pageChanged.connect(lambda p: seen.append(p))
+    cv.goto_page(3)
+    app.processEvents()
+    check("page change is signalled", seen and seen[-1] == 3, str(seen))
+    check("caption follows the pager",
+          "3" in win.card_caption.text(), win.card_caption.text())
+    cv.goto_page(1)
+    app.processEvents()
+
+    card0 = cv.card_at(0)
     win._on_card_activated(card0.record)
     app.processEvents()
     check("activating a card loads the inspector",
@@ -567,8 +634,11 @@ def main() -> int:
     win.set_view_mode("cards")
     app.processEvents()
     check("card view respects the search filter",
-          win.card_view.card_count() == win.proxy.rowCount(),
-          f"{win.card_view.card_count()} cards / {win.proxy.rowCount()} rows")
+          cv.total_records() == win.proxy.rowCount(),
+          f"{cv.total_records()} cards / {win.proxy.rowCount()} rows")
+    check("a single-page result collapses the pager",
+          cv.page_count() == 1 and not cv.pager.isVisible(),
+          f"{cv.page_count()} page(s), visible={cv.pager.isVisible()}")
 
     win.set_view_mode("table")
     app.processEvents()
