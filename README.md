@@ -27,7 +27,7 @@ from GitHub.
 | **Toolbar** | Search, auth + CORS filters, HTTPS toggle, Sync, Export, view switcher |
 | **Category tree** | All APIs, Favorites, and every category with live counts |
 | **Data grid** | 9-column high-density table, sortable, alternating rows, status chips |
-| **Card grid** | The same records as a two-column card flow (`Ctrl+Shift+V`) |
+| **Card grid** | The same records as a paged two-column card flow (`Ctrl+Shift+V`) |
 | **Inspector** | Description, generated cURL, protocol facts, open/copy/favorite |
 | **Status bar** | Filtered/total counts plus HTTPS %, CORS %, Qt runtime |
 
@@ -36,9 +36,13 @@ from GitHub.
 The segmented control in the toolbar (also `Ctrl+Shift+V`) switches between the
 table and a card grid. The card layout is derived from the design tokens —
 `surface-container-low` fill, 16px padding, 4px radius, 2px badges — because
-the mock ships no card artwork. It renders a bounded first page of **240
-cards** and reports the true total in the subheader rather than building a
-widget per record.
+the mock ships no card artwork.
+
+The card view holds the whole filtered result set and materialises **240 cards
+at a time** behind a numbered pager, so all 2,000+ records stay reachable
+without building a widget per record. A pinned strip carries numbered page
+tabs, `‹`/`›` arrows and a `Page X of Y` readout; it collapses when the result
+set fits on a single page.
 
 ### Filtering
 
@@ -67,6 +71,13 @@ CSV and JSON are supported.
 Refresh happens on a `QThread` worker (`qtapis/sync.py`) inside the *same*
 process — the UI stays interactive and search keeps working mid-sync. The app
 never spawns a subprocess or a shell.
+
+### One title bar
+
+The window is frameless, so the themed bar in `design.md` is the only chrome —
+no second native title bar stacked above it. Because that drops the OS
+affordances, the bar provides them: drag to move, double-click to maximize,
+working minimize/maximize/close, and edge resizing with matching cursors.
 
 ## Keyboard shortcuts
 
@@ -176,7 +187,7 @@ Tokens live in `qtapis/theme.py`.
 
 ## Known limitations
 
-- The card view pages at 240 cards; there is no infinite scroll yet.
+- The card view paginates 240 at a time; there is no "jump to record" field.
 - `data/catalog.json` doubles as the offline cache and the favorites store, so
   closing the app rewrites it.
 - Export covers the visible rows only; there is no "export everything" option.
