@@ -233,11 +233,17 @@ class _CardGrid(QScrollArea):
         # Remove through the layout only. Unparenting a widget that is still
         # referenced by a layout item leaves a dangling entry and the grid
         # stops painting.
+        #
+        # Re-parent to the host rather than to None: a parentless widget is a
+        # top-level window on Windows, so setParent(None) would briefly mint a
+        # fresh HWND per card on every rebuild. The host is a plain child
+        # widget, so this detaches from the layout without ever becoming a
+        # window. deleteLater() still destroys it once the event loop drains.
         while self._grid.count():
             item = self._grid.takeAt(0)
             w = item.widget()
             if w is not None:
-                w.setParent(None)
+                w.setParent(self._host)
                 w.deleteLater()
         self._cards.clear()
 
@@ -256,7 +262,11 @@ class _CardGrid(QScrollArea):
         per_row = max(1, (width - CARD_GAP) // (MIN_CARD_W + CARD_GAP))
         card_w = max(MIN_CARD_W, (width - CARD_GAP * (per_row + 1)) // per_row)
         for i, record in enumerate(self._records):
-            card = ApiCard(record)
+            # Parent at construction. A parentless QWidget is a top-level
+            # window on Windows, so building one and *then* adding it to the
+            # layout briefly gives it its own HWND -- which a tiling WM tiles
+            # as a separate window (the stray blank tile on startup).
+            card = ApiCard(record, self._host)
             card.setFixedWidth(card_w)
             card.activated.connect(self.cardActivated)
             self._grid.addWidget(card, i // per_row, i % per_row)

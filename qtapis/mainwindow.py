@@ -63,7 +63,7 @@ from .widgets import (
     dot_label,
 )
 
-APP_VERSION = "2.4.2"
+APP_VERSION = "2.4.3"
 
 # Pointer distance from a window edge that starts a resize drag.
 RESIZE_MARGIN = 6

@@ -629,6 +629,53 @@ def main() -> int:
     check("activating a card loads the inspector",
           win.inspector._record is card0.record, card0.record.name)
 
+    # -- no stray top-level windows -------------------------------------------
+    # A parentless QWidget is a top-level window on Windows, so it gets its
+    # own HWND. Under a tiling WM each HWND becomes a separate tile, which is
+    # how cards used to spawn blank extra tiles on startup.
+    #
+    # Inspecting the finished cards is NOT enough: the card is only a window
+    # for the instant between construction and the layout adopting it. So
+    # instrument ApiCard itself and record isWindow() at the moment the
+    # constructor returns.
+    from qtapis import cards as cards_mod
+
+    was_window_at_birth: list[bool] = []
+    real_api_card = cards_mod.ApiCard
+
+    class _BirthProbe(real_api_card):
+        def __init__(self, record, parent=None):
+            super().__init__(record, parent)
+            was_window_at_birth.append(self.isWindow())
+
+    cards_mod.ApiCard = _BirthProbe
+    try:
+        sample = [win.proxy.index(r, 0).data(Qt.UserRole)
+                  for r in range(min(40, win.proxy.rowCount()))]
+        cv.set_records(sample)
+        for _ in range(6):
+            app.processEvents()
+        # A second pass exercises the rebuild/teardown path as well.
+        cv.set_records(sample)
+        for _ in range(6):
+            app.processEvents()
+    finally:
+        cards_mod.ApiCard = real_api_card
+
+    check("no ApiCard is a window when constructed",
+          bool(was_window_at_birth) and not any(was_window_at_birth),
+          f"{sum(was_window_at_birth)}/{len(was_window_at_birth)} born as windows")
+
+    # And the steady state: nothing on screen is a stray window.
+    check("no ApiCard is a top-level window now",
+          not any(c.isWindow() for c in (cv.card_at(i)
+                                         for i in range(cv.card_count()))),
+          f"{cv.card_count()} cards checked")
+    check("exactly one titled top-level window exists",
+          sum(1 for w in app.topLevelWidgets()
+              if w.windowTitle() == "Qt Public APIs Explorer") == 1,
+          str([w.windowTitle() for w in app.topLevelWidgets() if w.windowTitle()]))
+
     win.search.setText("dog")
     app.processEvents()
     win.set_view_mode("cards")
